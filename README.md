@@ -1,72 +1,93 @@
 # PathGuard
 
-PathGuard is a front-end demo of a safe-journey tracker. A traveller starts a journey, chosen guardians can follow progress on a map, and the app raises calm, escalating alerts if something looks unusual along the route.
+PathGuard is a personal safety web app for tracking a journey in real time and keeping chosen guardians in the loop. Start a journey, share a live map link, and let PathGuard notify your guardians by email, SMS, or WhatsApp if you don't check in on time.
 
-Journeys use your **real device location** (browser Geolocation API): progress, distance left, ETA and alerts (no movement for 5 min, heading away from the destination, running late, location lost) are computed from real GPS fixes, and arriving within ~75 m of the destination closes the journey with a "reached safely" notification. Accounts start empty; nothing is pre-filled. The marketing landing page's "live demo" animation is the only simulated part. To test without travelling, use Chrome DevTools → Sensors → Location to override your position.
+## Features
+
+- **Live journey tracking** — share your current location and route on a live map while travelling.
+- **Guardians** — add trusted contacts who receive updates and alerts for your journeys.
+- **Shareable link** — a `/share/:token` page lets guardians follow a journey without needing an account.
+- **Automatic alerts** — if you miss a check-in, PathGuard notifies your guardians so they can check on you.
+- **Notifications** — delivered via email (Nodemailer) and SMS/WhatsApp (Twilio).
+- **History** — review past journeys and alerts.
 
 ## Tech stack
 
-- [React 18](https://react.dev/) + [React Router](https://reactrouter.com/)
-- [Vite](https://vitejs.dev/) for dev/build tooling
-- [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) (components in `src/components/ui`, including the sidebar)
-- [react-hook-form](https://react-hook-form.com/) + [zod](https://zod.dev/) for form validation (`src/lib/validation.js`)
-- [sonner](https://sonner.emilkowal.ski/) for toasts
-- [Framer Motion](https://www.framer.com/motion/) for animation
-- [Leaflet](https://leafletjs.com/) / [React Leaflet](https://react-leaflet.js.org/) for maps
-- [Recharts](https://recharts.org/) for charts
-- [Biome](https://biomejs.dev/) for linting and formatting
+- **Frontend:** React 18, React Router, Vite, Tailwind CSS, Radix UI, Leaflet / React-Leaflet, Recharts
+- **Backend:** Express (notification server for email, SMS, and WhatsApp)
+- **Tooling:** Biome (lint/format)
 
 ## Getting started
 
+### Prerequisites
+
+- Node.js 18 or later
+- npm
+
+### Installation
+
 ```bash
 npm install
+```
+
+### Environment variables
+
+Copy `.env.example` to `.env` and fill in the values you need:
+
+```bash
+cp .env.example .env
+```
+
+- **Email:** set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `MAIL_FROM`. A Gmail account with an [App Password](https://myaccount.google.com/apppasswords) works well. Leave the `SMTP_*` values empty to use a throwaway Ethereal test inbox — nothing is delivered, but a preview link is returned.
+- **SMS / WhatsApp:** set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM`, and `TWILIO_WHATSAPP_FROM`. A free Twilio trial account works; trial accounts can only message verified numbers, and WhatsApp requires each guardian to join the sandbox first.
+
+### Running locally
+
+Run the frontend and notification server together:
+
+```bash
 npm run dev
 ```
 
-The app runs at `http://localhost:3000` (fixed port). Use `npm run dev:all` to also start the notification server (email/SMS/WhatsApp) on port 8787.
+This starts the Express notification server on `http://localhost:8787` and the Vite dev server on `http://localhost:3000` (requests to `/api` are proxied to the notification server).
 
-## Scripts
+Or run them separately:
 
-| Script            | Description                                              |
-| ----------------- | -------------------------------------------------------- |
-| `npm run dev`     | Start the Vite dev server                                |
-| `npm run build`   | Build for production into `dist/`                        |
-| `npm run preview` | Preview the production build locally                     |
-| `npm run lint`    | Lint the codebase with Biome                             |
-| `npm run format`  | Format the codebase with Biome                           |
-| `npm run check`   | Run Biome's lint + format + import checks, with auto-fix |
+```bash
+npm run dev:web   # Vite dev server only
+npm run server    # Express notification server only
+```
+
+### Build
+
+```bash
+npm run build     # production build
+npm run preview   # preview the production build
+```
+
+### Linting & formatting
+
+```bash
+npm run lint      # check for lint errors
+npm run format    # format the codebase
+npm run check     # lint + format, applying fixes
+```
 
 ## Project structure
 
 ```
+server/           Express notification server (email, SMS, WhatsApp)
 src/
-  components/   Shared UI building blocks (buttons, map view, error boundary, ...)
-  context/      App-wide state (AppContext)
-  data/         Mock/demo data (route, places, etc.)
-  hooks/        Custom hooks (geolocation, journey state)
-  pages/        Route-level pages (Dashboard, Active Journey, Guardian View, ...)
-  services/     Browser-facing services (notifications)
-  styles/       Global Tailwind styles
-public/         Static assets, PWA manifest and service worker
+  components/     Reusable UI components (including shadcn/Radix-based primitives in components/ui)
+  context/        App-wide React context
+  data/           Static/sample data
+  hooks/          Custom React hooks
+  lib/            Utility functions
+  pages/          Route-level page components
+  services/       API/service layer
+  styles/         Global styles
 ```
 
-## Email (Nodemailer, free)
+## License
 
-`server/index.js` is a small Express + [Nodemailer](https://nodemailer.com/) server. Guardians who have an email are emailed when a journey starts, when an alert escalates (or SOS), and when you arrive safely.
-
-```bash
-cp .env.example .env     # add a Gmail address + App Password (free), or any SMTP login
-npm run dev:all          # starts the mail server (port 8787) and Vite together
-```
-
-With no `SMTP_*` set it uses a throwaway Ethereal test inbox: nothing is delivered, and the Settings → "Send me a test email" button shows a preview link. Message text is built on the server from a few validated fields and the endpoint is rate limited, so it cannot be used to send arbitrary mail.
-
-## How sharing works today
-
-Accounts, guardians, journeys and alerts live in the browser (`localStorage`). When a journey starts, PathGuard builds a live link and offers WhatsApp / SMS / email buttons per guardian. The link's live view (`/share/:token`) reads a snapshot from the same browser, so it updates across tabs of one browser only. Delivering location and "reached safely" to a guardian's own phone automatically needs a backend (realtime channel plus push/SMS, e.g. Supabase/Firebase and Twilio) — that is the next step.
-
-## Notes for contributors
-
-- This is a demo/prototype — journeys, alerts and routes are generated from mock data in `src/data/mock.js`, not a real backend.
-- Run `npm run check` before committing to keep formatting and lint rules consistent.
-# Pathguard-tracker
+No license has been specified for this project.
